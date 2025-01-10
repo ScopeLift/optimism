@@ -15,7 +15,7 @@ import { IDelayedWETH } from "interfaces/dispute/IDelayedWETH.sol";
 import { IPreimageOracle } from "interfaces/cannon/IPreimageOracle.sol";
 import { IMIPS } from "interfaces/cannon/IMIPS.sol";
 import { IDisputeGameFactory } from "interfaces/dispute/IDisputeGameFactory.sol";
-
+import { IAnchorStateRegistry } from "interfaces/dispute/IAnchorStateRegistry.sol";
 import { OPContractsManager } from "src/L1/OPContractsManager.sol";
 import { IOptimismPortal2 } from "interfaces/L1/IOptimismPortal2.sol";
 import { ISystemConfig } from "interfaces/L1/ISystemConfig.sol";
@@ -165,6 +165,7 @@ contract DeployImplementationsOutput is BaseDeployIO {
     IL1StandardBridge internal _l1StandardBridgeImpl;
     IOptimismMintableERC20Factory internal _optimismMintableERC20FactoryImpl;
     IDisputeGameFactory internal _disputeGameFactoryImpl;
+    IAnchorStateRegistry internal _anchorStateRegistryImpl;
 
     function set(bytes4 _sel, address _addr) public {
         require(_addr != address(0), "DeployImplementationsOutput: cannot set zero address");
@@ -181,6 +182,7 @@ contract DeployImplementationsOutput is BaseDeployIO {
         else if (_sel == this.l1StandardBridgeImpl.selector) _l1StandardBridgeImpl = IL1StandardBridge(payable(_addr));
         else if (_sel == this.optimismMintableERC20FactoryImpl.selector) _optimismMintableERC20FactoryImpl = IOptimismMintableERC20Factory(_addr);
         else if (_sel == this.disputeGameFactoryImpl.selector) _disputeGameFactoryImpl = IDisputeGameFactory(_addr);
+        else if (_sel == this.anchorStateRegistryImpl.selector) _anchorStateRegistryImpl = IAnchorStateRegistry(_addr);
         else revert("DeployImplementationsOutput: unknown selector");
         // forgefmt: disable-end
     }
@@ -202,7 +204,8 @@ contract DeployImplementationsOutput is BaseDeployIO {
             address(this.l1ERC721BridgeImpl()),
             address(this.l1StandardBridgeImpl()),
             address(this.optimismMintableERC20FactoryImpl()),
-            address(this.disputeGameFactoryImpl())
+            address(this.disputeGameFactoryImpl()),
+            address(this.anchorStateRegistryImpl())
         );
 
         DeployUtils.assertValidContractAddresses(Solarray.extend(addrs1, addrs2));
@@ -265,10 +268,16 @@ contract DeployImplementationsOutput is BaseDeployIO {
         return _disputeGameFactoryImpl;
     }
 
+    function anchorStateRegistryImpl() public view returns (IAnchorStateRegistry) {
+        DeployUtils.assertValidContractAddress(address(_anchorStateRegistryImpl));
+        return _anchorStateRegistryImpl;
+    }
+
     // -------- Deployment Assertions --------
     function assertValidDeploy(DeployImplementationsInput _dii) public view {
         assertValidDelayedWETHImpl(_dii);
         assertValidDisputeGameFactoryImpl(_dii);
+        assertValidAnchorStateRegistryImpl(_dii);
         assertValidL1CrossDomainMessengerImpl(_dii);
         assertValidL1ERC721BridgeImpl(_dii);
         assertValidL1StandardBridgeImpl(_dii);
@@ -410,6 +419,12 @@ contract DeployImplementationsOutput is BaseDeployIO {
 
         require(address(factory.owner()) == address(0), "DG-10");
     }
+
+    function assertValidAnchorStateRegistryImpl(DeployImplementationsInput) internal view {
+        IAnchorStateRegistry registry = anchorStateRegistryImpl();
+
+        DeployUtils.assertInitialized({ _contractAddress: address(registry), _isProxy: false, _slot: 0, _offset: 0 });
+    }
 }
 
 contract DeployImplementations is Script {
@@ -427,7 +442,7 @@ contract DeployImplementations is Script {
         deployPreimageOracleSingleton(_dii, _dio);
         deployMipsSingleton(_dii, _dio);
         deployDisputeGameFactoryImpl(_dii, _dio);
-
+        deployAnchorStateRegistryImpl(_dii, _dio);
         // Deploy the OP Contracts Manager with the new implementations set.
         deployOPContractsManager(_dii, _dio);
 
@@ -459,6 +474,7 @@ contract DeployImplementations is Script {
             l1CrossDomainMessengerImpl: address(_dio.l1CrossDomainMessengerImpl()),
             l1StandardBridgeImpl: address(_dio.l1StandardBridgeImpl()),
             disputeGameFactoryImpl: address(_dio.disputeGameFactoryImpl()),
+            anchorStateRegistryImpl: address(_dio.anchorStateRegistryImpl()),
             delayedWETHImpl: address(_dio.delayedWETHImpl()),
             mipsImpl: address(_dio.mipsSingleton())
         });
@@ -499,7 +515,6 @@ contract DeployImplementations is Script {
             blueprints.proxyAdmin = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("ProxyAdmin")), salt);
             blueprints.l1ChugSplashProxy = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("L1ChugSplashProxy")), salt);
             blueprints.resolvedDelegateProxy = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("ResolvedDelegateProxy")), salt);
-            blueprints.anchorStateRegistry = deployBytecode(Blueprint.blueprintDeployerBytecode(vm.getCode("AnchorStateRegistry")), salt);
             (blueprints.permissionedDisputeGame1, blueprints.permissionedDisputeGame2)  = deployBigBytecode(vm.getCode("PermissionedDisputeGame"), salt);
             vm.stopBroadcast();
             // forgefmt: disable-end
@@ -660,7 +675,7 @@ contract DeployImplementations is Script {
     // | Contract                | Proxied | Deployment                        | MCP Ready  |
     // |-------------------------|---------|-----------------------------------|------------|
     // | DisputeGameFactory      | Yes     | Bespoke                           | Yes        |
-    // | AnchorStateRegistry     | Yes     | Bespoke                           | No         |
+    // | AnchorStateRegistry     | Yes     | Bespoke                           | Yes         |
     // | FaultDisputeGame        | No      | Bespoke                           | No         | Not yet supported by OPCM
     // | PermissionedDisputeGame | No      | Bespoke                           | No         |
     // | DelayedWETH             | Yes     | Two bespoke (one per DisputeGame) | Yes *️⃣     |
@@ -677,6 +692,7 @@ contract DeployImplementations is Script {
     // here we deploy:
     //
     //   - DisputeGameFactory (implementation)
+    //   - AnchorStateRegistry (implementation)
     //   - OptimismPortal2 (implementation)
     //   - DelayedWETH (implementation)
     //   - PreimageOracle (singleton)
@@ -685,7 +701,6 @@ contract DeployImplementations is Script {
     // For contracts which are not MCP ready neither the Proxy nor the implementation can be shared, therefore they
     // are deployed by `DeployOpChain.s.sol`.
     // These are:
-    // - AnchorStateRegistry (proxy and implementation)
     // - FaultDisputeGame (not proxied)
     // - PermissionedDisputeGame (not proxied)
     // - DelayedWeth (proxies only)
@@ -839,6 +854,35 @@ contract DeployImplementations is Script {
         _dio.set(_dio.disputeGameFactoryImpl.selector, address(impl));
     }
 
+    function deployAnchorStateRegistryImpl(
+        DeployImplementationsInput _dii,
+        DeployImplementationsOutput _dio
+    )
+        public
+        virtual
+    {
+        string memory release = _dii.l1ContractsRelease();
+        string memory stdVerToml = _dii.standardVersionsToml();
+        string memory contractName = "anchor_state_registry";
+        IAnchorStateRegistry impl;
+
+        address existingImplementation = getReleaseAddress(release, contractName, stdVerToml);
+        if (existingImplementation != address(0)) {
+            impl = IAnchorStateRegistry(payable(existingImplementation));
+        } else {
+            vm.broadcast(msg.sender);
+            impl = IAnchorStateRegistry(
+                DeployUtils.create1({
+                    _name: "AnchorStateRegistry",
+                    _args: DeployUtils.encodeConstructor(abi.encodeCall(IAnchorStateRegistry.__constructor__, ()))
+                })
+            );
+        }
+
+        vm.label(address(impl), "AnchorStateRegistryImpl");
+        _dio.set(_dio.anchorStateRegistryImpl.selector, address(impl));
+    }
+
     // -------- Utilities --------
 
     function etchIOContracts() public returns (DeployImplementationsInput dii_, DeployImplementationsOutput dio_) {
@@ -969,6 +1013,7 @@ contract DeployImplementationsInterop is DeployImplementations {
             l1CrossDomainMessengerImpl: address(_dio.l1CrossDomainMessengerImpl()),
             l1StandardBridgeImpl: address(_dio.l1StandardBridgeImpl()),
             disputeGameFactoryImpl: address(_dio.disputeGameFactoryImpl()),
+            anchorStateRegistryImpl: address(_dio.anchorStateRegistryImpl()),
             delayedWETHImpl: address(_dio.delayedWETHImpl()),
             mipsImpl: address(_dio.mipsSingleton())
         });

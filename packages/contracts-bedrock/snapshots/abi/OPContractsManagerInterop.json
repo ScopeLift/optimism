@@ -45,11 +45,6 @@
           },
           {
             "internalType": "address",
-            "name": "anchorStateRegistry",
-            "type": "address"
-          },
-          {
-            "internalType": "address",
             "name": "permissionedDisputeGame1",
             "type": "address"
           },
@@ -98,6 +93,11 @@
           {
             "internalType": "address",
             "name": "disputeGameFactoryImpl",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "anchorStateRegistryImpl",
             "type": "address"
           },
           {
@@ -161,11 +161,6 @@
           {
             "internalType": "address",
             "name": "resolvedDelegateProxy",
-            "type": "address"
-          },
-          {
-            "internalType": "address",
-            "name": "anchorStateRegistry",
             "type": "address"
           },
           {
@@ -264,7 +259,7 @@
           },
           {
             "internalType": "bytes",
-            "name": "startingAnchorRoots",
+            "name": "startingAnchorRoot",
             "type": "bytes"
           },
           {
@@ -368,11 +363,6 @@
             "type": "address"
           },
           {
-            "internalType": "contract IAnchorStateRegistry",
-            "name": "anchorStateRegistryImpl",
-            "type": "address"
-          },
-          {
             "internalType": "contract IFaultDisputeGame",
             "name": "faultDisputeGame",
             "type": "address"
@@ -440,6 +430,11 @@
           {
             "internalType": "address",
             "name": "disputeGameFactoryImpl",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "anchorStateRegistryImpl",
             "type": "address"
           },
           {
@@ -609,7 +604,7 @@
   },
   {
     "inputs": [],
-    "name": "InvalidStartingAnchorRoots",
+    "name": "InvalidStartingAnchorRoot",
     "type": "error"
   },
   {
