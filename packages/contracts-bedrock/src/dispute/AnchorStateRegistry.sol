@@ -43,9 +43,6 @@ contract AnchorStateRegistry is Initializable, ISemver {
     /// @notice The starting anchor root.
     OutputRoot internal startingAnchorRoot;
 
-    /// @notice Emitted when an anchor state is not updated.
-    event AnchorNotUpdated(IFaultDisputeGame indexed game, string reason);
-
     /// @notice Emitted when an anchor state is updated.
     event AnchorUpdated(IFaultDisputeGame indexed game);
 
@@ -72,6 +69,12 @@ contract AnchorStateRegistry is Initializable, ISemver {
         disputeGameFactory = _disputeGameFactory;
         portal = _portal;
         startingAnchorRoot = _startingAnchorRoot;
+    }
+
+    /// @notice Returns the respected game type.
+    /// @return The respected game type.
+    function respectedGameType() public view returns (GameType) {
+        return portal.respectedGameType();
     }
 
     /// @custom:legacy
@@ -114,7 +117,7 @@ contract AnchorStateRegistry is Initializable, ISemver {
     /// @param _game The game to check.
     /// @return Whether the game is of a respected game type.
     function isGameRespected(IDisputeGame _game) public view returns (bool) {
-        return _game.gameType().raw() == portal.respectedGameType().raw();
+        return _game.wasRespectedGameTypeWhenCreated();
     }
 
     /// @notice Determines whether a game is blacklisted.
@@ -129,6 +132,21 @@ contract AnchorStateRegistry is Initializable, ISemver {
     /// @return Whether the game is retired.
     function isGameRetired(IDisputeGame _game) public view returns (bool) {
         return _game.createdAt().raw() < portal.respectedGameTypeUpdatedAt();
+    }
+
+    /// @notice Returns whether a game is resolved.
+    /// @param _game The game to check.
+    /// @return Whether the game is resolved.
+    function isGameResolved(IDisputeGame _game) public view returns (bool) {
+        return _game.resolvedAt().raw() != 0
+            && (_game.status() == GameStatus.DEFENDER_WINS || _game.status() == GameStatus.CHALLENGER_WINS);
+    }
+
+    /// @notice Returns whether a game is beyond the airgap period.
+    /// @param _game The game to check.
+    /// @return Whether the game is beyond the airgap period.
+    function isGameBeyondAirgap(IDisputeGame _game) public view returns (bool) {
+        return block.timestamp - _game.resolvedAt().raw() > portal.disputeGameFinalityDelaySeconds();
     }
 
     /// @notice Determines whether a game resolved properly and the game was not subject to any
@@ -160,56 +178,73 @@ contract AnchorStateRegistry is Initializable, ISemver {
         return (true, "");
     }
 
-    /// @notice Callable by FaultDisputeGame contracts to update the anchor state. Pulls the anchor state directly from
-    ///         the FaultDisputeGame contract and stores it in the registry if the new anchor state is valid and the
-    ///         state is newer than the current anchor state.
-    function tryUpdateAnchorState() external {
-        // Grab the game.
-        IFaultDisputeGame game = IFaultDisputeGame(msg.sender);
-
-        // Check if the game is a proper game.
-        (bool isProper, string memory reason) = isGameProper(game);
-        if (!isProper) {
-            emit AnchorNotUpdated(game, reason);
-            return;
+    /// @notice Returns whether a game is finalized.
+    /// @param _game The game to check.
+    /// @return Whether the game is finalized.
+    /// @return Reason why the game is not finalized.
+    function isGameFinalized(IDisputeGame _game) public view returns (bool, string memory) {
+        // Game must be resolved.
+        if (!isGameResolved(_game)) {
+            return (false, "game not resolved");
         }
 
-        // Must be a game that resolved in favor of the state.
-        if (game.status() != GameStatus.DEFENDER_WINS) {
-            emit AnchorNotUpdated(game, "game not defender wins");
-            return;
+        // Game must be beyond the airgap period.
+        if (!isGameBeyondAirgap(_game)) {
+            return (false, "game not beyond airgap period");
+        }
+
+        return (true, "");
+    }
+
+    /// @notice Returns whether a game's root claim is valid.
+    /// @param _game The game to check.
+    /// @return Whether the game's root claim is valid.
+    /// @return Reason why the game's root claim is not valid.
+    function isGameClaimValid(IDisputeGame _game) public view returns (bool, string memory) {
+        // Game must be a proper game.
+        (bool properGame, string memory notProperGameReason) = isGameProper(_game);
+        if (!properGame) {
+            return (false, notProperGameReason);
+        }
+
+        // Game must be finalized.
+        (bool finalized, string memory notFinalizedReason) = isGameFinalized(_game);
+        if (!finalized) {
+            return (false, notFinalizedReason);
+        }
+
+        // Game must be resolved in favor of the defender.
+        if (_game.status() != GameStatus.DEFENDER_WINS) {
+            return (false, "game not defender wins");
+        }
+
+        return (true, "");
+    }
+
+    /// @notice Updates the anchor game.
+    /// @param _game New candidate anchor game.
+    function setAnchorState(IDisputeGame _game) public {
+        // Convert game to FaultDisputeGame.
+        // We can't use FaultDisputeGame in the interface because this function is called from the
+        // FaultDisputeGame contract which can't import IFaultDisputeGame by convention. We should
+        // likely introduce a new interface (e.g., StateDisputeGame) that can act as a more useful
+        // version of IDisputeGame in the future.
+        IFaultDisputeGame game = IFaultDisputeGame(address(_game));
+
+        // Check if the candidate game is valid.
+        (bool valid, string memory reason) = isGameClaimValid(game);
+        if (!valid) {
+            revert InvalidAnchorGame(reason);
         }
 
         // No need to update anything if the anchor state is already newer.
         (, uint256 anchorL2BlockNumber) = getAnchorRoot();
         if (game.l2BlockNumber() <= anchorL2BlockNumber) {
-            emit AnchorNotUpdated(game, "game not newer than anchor state");
-            return;
+            revert InvalidAnchorGame("game not newer than anchor state");
         }
 
         // Update the anchor game.
         anchorGame = game;
         emit AnchorUpdated(game);
-    }
-
-    /// @notice Sets the anchor state given the game.
-    /// @param _game The game to set the anchor state for.
-    function setAnchorState(IFaultDisputeGame _game) external {
-        if (msg.sender != superchainConfig.guardian()) revert Unauthorized();
-
-        // Check if the game is a proper game.
-        (bool isProper, string memory reason) = isGameProper(_game);
-        if (!isProper) {
-            revert InvalidAnchorGame(reason);
-        }
-
-        // The game must have resolved in favor of the root claim.
-        if (_game.status() != GameStatus.DEFENDER_WINS) {
-            revert InvalidAnchorGame("game not defender wins");
-        }
-
-        // Update the anchor game.
-        anchorGame = _game;
-        emit AnchorUpdated(_game);
     }
 }

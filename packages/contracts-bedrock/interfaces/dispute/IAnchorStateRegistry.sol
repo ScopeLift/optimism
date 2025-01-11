@@ -10,9 +10,7 @@ import { GameType, Hash, OutputRoot } from "src/dispute/lib/Types.sol";
 
 interface IAnchorStateRegistry {
     error InvalidAnchorGame(string reason);
-    error Unauthorized();
 
-    event AnchorNotUpdated(IFaultDisputeGame indexed game, string reason);
     event AnchorUpdated(IFaultDisputeGame indexed game);
     event Initialized(uint8 version);
 
@@ -25,11 +23,15 @@ interface IAnchorStateRegistry {
     function isGameBlacklisted(IDisputeGame _game) external view returns (bool);
     function isGameRespected(IDisputeGame _game) external view returns (bool);
     function isGameRetired(IDisputeGame _game) external view returns (bool);
+    function isGameResolved(IDisputeGame _game) external view returns (bool);
+    function isGameBeyondAirgap(IDisputeGame _game) external view returns (bool);
     function isGameProper(IDisputeGame _game) external view returns (bool, string memory);
+    function isGameFinalized(IDisputeGame _game) external view returns (bool, string memory);
+    function isGameClaimValid(IDisputeGame _game) external view returns (bool, string memory);
     function portal() external view returns (IOptimismPortal2);
-    function setAnchorState(IFaultDisputeGame _game) external;
+    function respectedGameType() external view returns (GameType);
+    function setAnchorState(IDisputeGame _game) external;
     function superchainConfig() external view returns (ISuperchainConfig);
-    function tryUpdateAnchorState() external;
     function version() external view returns (string memory);
 
     function __constructor__() external;
