@@ -197,7 +197,9 @@ contract DeployOPCM is Script {
             l1ChugSplashProxy: _doi.l1ChugSplashProxyBlueprint(),
             resolvedDelegateProxy: _doi.resolvedDelegateProxyBlueprint(),
             permissionedDisputeGame1: _doi.permissionedDisputeGame1Blueprint(),
-            permissionedDisputeGame2: _doi.permissionedDisputeGame2Blueprint()
+            permissionedDisputeGame2: _doi.permissionedDisputeGame2Blueprint(),
+            permissionlessDisputeGame1: address(0),
+            permissionlessDisputeGame2: address(0)
         });
         OPContractsManager.Implementations memory implementations = OPContractsManager.Implementations({
             l1ERC721BridgeImpl: address(_doi.l1ERC721BridgeImpl()),
